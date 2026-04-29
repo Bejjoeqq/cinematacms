@@ -7,7 +7,6 @@ from django.test import Client, TestCase, override_settings
 
 from users.models import User
 
-
 _CHECK_NAMES = ("_check_db", "_check_cache", "_check_filesystem", "_check_static_manifest")
 
 
@@ -59,10 +58,9 @@ class HealthReadyTests(TestCase):
     def _override_vite(self, dev_mode=False, manifest_path=None):
         if manifest_path is None:
             from django.conf import settings as s
+
             manifest_path = s.DJANGO_VITE["default"]["manifest_path"]
-        return override_settings(
-            DJANGO_VITE={"default": {"dev_mode": dev_mode, "manifest_path": manifest_path}}
-        )
+        return override_settings(DJANGO_VITE={"default": {"dev_mode": dev_mode, "manifest_path": manifest_path}})
 
     def test_ready_all_healthy_returns_200(self):
         with _all_checks_healthy():
@@ -87,9 +85,12 @@ class HealthReadyTests(TestCase):
         self.assertFalse(body["checks"]["database"]["ok"])
 
     def test_ready_cache_failure_returns_503(self):
-        with _all_checks_healthy(), patch(
-            "cms.health._check_cache",
-            return_value=(False, "unhealthy"),
+        with (
+            _all_checks_healthy(),
+            patch(
+                "cms.health._check_cache",
+                return_value=(False, "unhealthy"),
+            ),
         ):
             response = self.client.get("/health/ready")
         self.assertEqual(response.status_code, 503)
@@ -101,9 +102,17 @@ class HealthReadyTests(TestCase):
         # Privileged response must not echo the raw cache error string back.
         # Use the real _check_cache so we exercise the redaction path; baseline
         # the rest so this test can't fail for unrelated reasons.
-        with _all_checks_healthy_except("_check_cache"), patch(
-            "cms.health.cache_health_check",
-            return_value={"status": "unhealthy", "error": "leaky internal redis trace", "latency_ms": 0, "timestamp": 0},
+        with (
+            _all_checks_healthy_except("_check_cache"),
+            patch(
+                "cms.health.cache_health_check",
+                return_value={
+                    "status": "unhealthy",
+                    "error": "leaky internal redis trace",
+                    "latency_ms": 0,
+                    "timestamp": 0,
+                },
+            ),
         ):
             response = self.client.get("/health/ready")
         self.assertNotIn("leaky internal redis trace", response.content.decode())
@@ -140,8 +149,9 @@ class HealthReadyTests(TestCase):
     def test_ready_public_response_has_no_detail(self):
         # Non-localhost REMOTE_ADDR must get compact response with no exception info.
         public_client = Client(REMOTE_ADDR="203.0.113.5")
-        with _all_checks_healthy(), patch(
-            "cms.health._check_db", return_value=(False, "sensitive internal error detail")
+        with (
+            _all_checks_healthy(),
+            patch("cms.health._check_db", return_value=(False, "sensitive internal error detail")),
         ):
             response = public_client.get("/health/ready")
         self.assertEqual(response.status_code, 503)
@@ -155,8 +165,9 @@ class HealthReadyTests(TestCase):
         # XFF when REMOTE_ADDR is itself a trusted proxy, so the crafted header
         # is ignored and the real (external) REMOTE_ADDR wins.
         public_client = Client(REMOTE_ADDR="203.0.113.5")
-        with _all_checks_healthy(), patch(
-            "cms.health._check_db", return_value=(False, "sensitive internal error detail")
+        with (
+            _all_checks_healthy(),
+            patch("cms.health._check_db", return_value=(False, "sensitive internal error detail")),
         ):
             response = public_client.get("/health/ready", HTTP_X_FORWARDED_FOR="127.0.0.1")
         self.assertEqual(response.status_code, 503)
@@ -169,13 +180,11 @@ class HealthReadyTests(TestCase):
         # proxy) and a real external client IP in XFF. Because nginx is a
         # trusted proxy, `get_client_ip()` resolves to the XFF entry, so the
         # external client does NOT get the detailed branch.
-        with _all_checks_healthy(), patch(
-            "cms.health._check_db", return_value=(False, "LeakyError details")
-        ):
+        with _all_checks_healthy(), patch("cms.health._check_db", return_value=(False, "LeakyError details")):
             response = self.client.get(
                 "/health/ready",
                 REMOTE_ADDR="127.0.0.1",
-                HTTP_X_FORWARDED_FOR="203.0.113.5",
+                headers={"x-forwarded-for": "203.0.113.5"}
             )
         self.assertEqual(response.status_code, 503)
         body = json.loads(response.content)
@@ -198,9 +207,7 @@ class HealthReadyTests(TestCase):
         self.client = Client(REMOTE_ADDR="203.0.113.5")
         self.client.login(username="staffhealth", password=test_password)
 
-        with _all_checks_healthy(), patch(
-            "cms.health._check_db", return_value=(False, "OperationalError")
-        ):
+        with _all_checks_healthy(), patch("cms.health._check_db", return_value=(False, "OperationalError")):
             response = self.client.get("/health/ready")
         self.assertEqual(response.status_code, 503)
         body = json.loads(response.content)
@@ -232,9 +239,7 @@ class HealthReadyTokenGateTests(TestCase):
 
     def test_gate_rejects_wrong_token(self):
         with override_settings(HEALTH_READY_TOKEN=self.TOKEN), _all_checks_healthy():
-            response = self.client.get(
-                "/health/ready", HTTP_X_HEALTHCHECK_TOKEN="wrong-token"
-            )
+            response = self.client.get("/health/ready", headers={"x-healthcheck-token": "wrong-token"})
         self.assertEqual(response.status_code, 401)
 
     def test_gate_skips_checks_when_rejected(self):
@@ -256,9 +261,7 @@ class HealthReadyTokenGateTests(TestCase):
 
     def test_gate_accepts_valid_token_and_returns_privileged_shape(self):
         with override_settings(HEALTH_READY_TOKEN=self.TOKEN), _all_checks_healthy():
-            response = self.client.get(
-                "/health/ready", HTTP_X_HEALTHCHECK_TOKEN=self.TOKEN
-            )
+            response = self.client.get("/health/ready", headers={"x-healthcheck-token": self.TOKEN})
         self.assertEqual(response.status_code, 200)
         body = json.loads(response.content)
         # Token bearers see the detailed (dict-per-check) shape.
@@ -296,9 +299,7 @@ class HealthReadyTokenGateTests(TestCase):
         # Sanity: an empty header must not be treated as matching an empty/unset
         # token. (Both branches in the helper return False for that case.)
         with override_settings(HEALTH_READY_TOKEN=self.TOKEN), _all_checks_healthy():
-            response = self.client.get(
-                "/health/ready", HTTP_X_HEALTHCHECK_TOKEN=""
-            )
+            response = self.client.get("/health/ready", headers={"x-healthcheck-token": ""})
         self.assertEqual(response.status_code, 401)
 
 

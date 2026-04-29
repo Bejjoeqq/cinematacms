@@ -20,7 +20,7 @@ def _has_valid_health_token(request) -> bool:
     expected = getattr(settings, "HEALTH_READY_TOKEN", "") or ""
     if not expected:
         return False  # gate disabled — caller cannot present a valid token
-    provided = request.META.get("HTTP_X_HEALTHCHECK_TOKEN", "")
+    provided = request.headers.get("x-healthcheck-token", "")
     if not provided:
         return False
     return constant_time_compare(provided, expected)
@@ -40,11 +40,7 @@ def _client_is_privileged(request) -> bool:
     # "trusted caller" — see PR #503 for the helper.
     client_ip = get_client_ip(request)
     is_localhost = client_ip in ("127.0.0.1", "::1")
-    is_staff = (
-        hasattr(request, "user")
-        and request.user.is_authenticated
-        and request.user.is_staff
-    )
+    is_staff = hasattr(request, "user") and request.user.is_authenticated and request.user.is_staff
     return is_localhost or is_staff
 
 
@@ -81,9 +77,7 @@ def _check_cache() -> tuple[bool, str]:
 
 def _check_filesystem() -> tuple[bool, str]:
     try:
-        with tempfile.NamedTemporaryFile(
-            dir=settings.MEDIA_ROOT, prefix=".healthz_", delete=True
-        ) as f:
+        with tempfile.NamedTemporaryFile(dir=settings.MEDIA_ROOT, prefix=".healthz_", delete=True) as f:
             f.write(b"ok")
             f.flush()
         return True, "ok"
@@ -128,11 +122,7 @@ def ready(request):
     # treated as privileged for response shaping since they hold the secret.
     has_token = _has_valid_health_token(request)
     is_privileged_caller = _client_is_privileged(request)
-    if (
-        getattr(settings, "HEALTH_READY_TOKEN", "")
-        and not has_token
-        and not is_privileged_caller
-    ):
+    if getattr(settings, "HEALTH_READY_TOKEN", "") and not has_token and not is_privileged_caller:
         response = JsonResponse({"status": "unauthorized"}, status=401)
         response["Cache-Control"] = "no-store"
         return response

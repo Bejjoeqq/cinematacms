@@ -7,7 +7,8 @@ from django.urls import include, path
 from prometheus_client import CollectorRegistry, generate_latest
 from prometheus_client import multiprocess as prom_multiprocess
 
-from cms.health import live as health_live, ready as health_ready
+from cms.health import live as health_live
+from cms.health import ready as health_ready
 from cms.request_utils import get_client_ip
 
 
