@@ -20,3 +20,13 @@ USE_X_ACCEL_REDIRECT = False
 CORS_ALLOW_ALL_ORIGINS = True
 # Custom MFA settings
 MFA_REQUIRED_ROLES = ["superuser"]  # options: superuser, advanced_user, authenticated, manager, editor
+
+# /health/ready shared-secret gate.
+# Leave empty (or unset) for local dev — gate is disabled. In production,
+# set a long random value here and store the SAME value in your deploy
+# verifier's secrets (e.g. GitHub Actions secret HEALTH_READY_TOKEN). Generate
+# with:
+#     python -c "import secrets; print(secrets.token_urlsafe(32))"
+# Anonymous external probes that don't send `X-Healthcheck-Token: <value>`
+# will be rejected with 401 *before* the four readiness checks run.
+HEALTH_READY_TOKEN = ""

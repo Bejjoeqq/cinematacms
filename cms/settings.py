@@ -428,6 +428,15 @@ PASSWORD_BRUTE_FORCE_MAX_ATTEMPTS = 5
 PASSWORD_BRUTE_FORCE_WINDOW = 900  # 15 minutes
 TRUSTED_PROXIES = [proxy.strip() for proxy in os.getenv("TRUSTED_PROXIES", "127.0.0.1,::1").split(",") if proxy.strip()]
 
+# Shared secret required to access /health/ready from anonymous callers.
+# Default: "" (gate disabled — endpoint open subject to the existing
+# direct-localhost / staff privilege rule). To enable in production, override
+# in `cms/local_settings.py` (see `local_settings_example.py` for the canonical
+# snippet). Operators on the box and authenticated staff bypass the gate; all
+# other callers must send `X-Healthcheck-Token: <value>` or they get 401
+# *before* the expensive checks run.
+HEALTH_READY_TOKEN = ""
+
 # Media password validation
 MEDIA_PASSWORD_MIN_LENGTH = 8
 
