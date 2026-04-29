@@ -182,9 +182,7 @@ class HealthReadyTests(TestCase):
         # external client does NOT get the detailed branch.
         with _all_checks_healthy(), patch("cms.health._check_db", return_value=(False, "LeakyError details")):
             response = self.client.get(
-                "/health/ready",
-                REMOTE_ADDR="127.0.0.1",
-                headers={"x-forwarded-for": "203.0.113.5"}
+                "/health/ready", REMOTE_ADDR="127.0.0.1", headers={"x-forwarded-for": "203.0.113.5"}
             )
         self.assertEqual(response.status_code, 503)
         body = json.loads(response.content)
