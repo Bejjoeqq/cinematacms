@@ -75,7 +75,7 @@ TARGET_SHA=$(printf '%s' "$LAST_LINE" | cut -f2)
 DEPLOYED_SHA=$(printf '%s' "$LAST_LINE" | cut -f3)
 DEPLOYED_BRANCH=$(printf '%s' "$LAST_LINE" | cut -f4)
 
-if [ -z "$TARGET_SHA" ]; then
+if [ -z "$TARGET_SHA" ] || [ -z "$DEPLOYED_SHA" ]; then
   echo -e "${RED}Malformed deploy log entry: '$LAST_LINE'${NC}" >&2
   exit 1
 fi
@@ -91,6 +91,23 @@ CURRENT_SHA=$(git rev-parse HEAD)
 if [ "$CURRENT_SHA" = "$TARGET_SHA" ]; then
   echo -e "${YELLOW}HEAD is already at $TARGET_SHA. Nothing to roll back.${NC}"
   exit 0
+fi
+
+# Sanity guard: the deploy log says the last forward deploy left HEAD at
+# $DEPLOYED_SHA. If HEAD is somewhere else now, someone moved it out of
+# band (manual git checkout, ad-hoc pull, an earlier rollback that wasn't
+# logged) and the "previous deploy" recorded in the log may no longer be
+# the right rollback target. Refuse to act and let the operator decide.
+if [ "$CURRENT_SHA" != "$DEPLOYED_SHA" ]; then
+  echo -e "${RED}Repository state has shifted since the last logged deploy.${NC}" >&2
+  echo -e "${RED}  HEAD now:        $CURRENT_SHA${NC}" >&2
+  echo -e "${RED}  Last deployed:   $DEPLOYED_SHA  (per $DEPLOY_LOG)${NC}" >&2
+  echo -e "${RED}  Rollback target: $TARGET_SHA${NC}" >&2
+  echo -e "${YELLOW}Refusing to roll back from a HEAD the deploy log does not know about.${NC}" >&2
+  echo -e "${YELLOW}If you intended to roll back from the last deploy, run:${NC}" >&2
+  echo -e "${YELLOW}  git fetch --all && git checkout $DEPLOYED_SHA${NC}" >&2
+  echo -e "${YELLOW}then re-run this script. Otherwise check out the desired target manually.${NC}" >&2
+  exit 1
 fi
 
 echo -e "${YELLOW}Most recent deploy log entry:${NC}"
